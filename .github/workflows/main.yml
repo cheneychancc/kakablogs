@@ -10,46 +10,35 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      # 1. 拉取代码到宿主机
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 在 Docker 容器中编译（解决宿主机没有 npm 的问题）
-      - name: Build in Docker
-        uses: addnab/docker-run-action@v3
-        with:
-          image: node:18.16.0
-          # 将宿主机的当前工作目录映射到容器的 /app 目录
-          options: -v ${{ github.workspace }}:/app
-          run: |
-            cd /app
-            # 安装依赖并打包
-            npm install
-            npm run docs:build
-            # 重要：容器内是 root，编译完后把文件权限改回宿主机用户，防止后面 cp 报错
-            chown -R $(id -u):$(id -g) /app
-
-      # 3. 部署到服务器目录
-      - name: Deploy to server
+      # 关键步骤：直接调用原生的 docker 命令
+      - name: Build with Native Docker
         run: |
-          echo "开始部署..."
+          # 1. 运行 node 容器进行编译
+          # --rm: 运行完自动删除容器
+          # -v: 将当前 GitHub Actions 的工作目录映射到容器内的 /app
+          # -w: 指定容器内的工作目录为 /app
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -w /app \
+            node:18.16.0 \
+            sh -c "npm install && npm run docs:build && chown -R $(id -u):$(id -g) ."
+
+      # 2. 部署（依然在宿主机执行）
+      - name: Copy to Target
+        run: |
           TARGET_DIR=/var/www/blogs/prod
-
-          # 确保目标目录存在
           sudo mkdir -p $TARGET_DIR
-
-          # 删除旧文件
-          sudo rm -rf $TARGET_DIR/*
-
-          # 检查打包产物并复制
-          # VitePress 通常在 .vitepress/dist，VuePress 或普通 React 在 dist
+          
+          # 判断产物路径并拷贝
           if [ -d ".vitepress/dist" ]; then
-            sudo cp -r .vitepress/dist/* $TARGET_DIR/
-          elif [ -d "dist" ]; then
-            sudo cp -r dist/* $TARGET_DIR/
+            SOURCE=".vitepress/dist/"
           else
-            echo "错误：未找到编译后的 dist 目录！"
-            exit 1
+            SOURCE="dist/"
           fi
-
+          
+          sudo rm -rf $TARGET_DIR/*
+          sudo cp -r $SOURCE* $TARGET_DIR/
           echo "部署完成"
