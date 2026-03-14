@@ -1,39 +1,40 @@
-# 工作流名称（在 GitHub Actions 页面显示）
-name: Test Self-hosted Runner
+name: Deploy Frontend
 
-# 触发条件：当推送到 main 分支时执行
 on:
   push:
-    branches: [ prod ]  # 你可以改成自己的分支（如 master）
-  # 也可以添加手动触发（方便测试）
+    branches: [ prod ]
   workflow_dispatch:
 
-# 任务集合
 jobs:
-  # 定义一个任务，名称自定义（如 test-runner）
-  test-runner:
-    # 指定运行环境：使用你自己的 Runner（关键！）
-    runs-on: self-hosted  # 必须写 self-hosted，GitHub 会匹配你配置的自托管 Runner
-    # 也可以给 Runner 打标签，精准匹配：runs-on: [self-hosted, cheney-runner]
+  deploy:
+    runs-on: self-hosted
 
-    # 任务步骤
     steps:
-      # 步骤 1：拉取仓库代码到 Runner 服务器
+      # 1 拉代码
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 步骤 2：测试 Runner 环境（执行简单命令）
-      - name: Test Runner environment
+      # 2 安装依赖
+      - name: Install dependencies
         run: |
-          echo "🎉 我的自托管 Runner 运行成功！"
-          echo "当前用户：$(whoami)"  # 应该输出 cheney
-          echo "当前目录：$(pwd)"
-          echo "服务器系统信息：$(uname -a)"
-          
-      # 步骤 3：可选 - 执行自定义脚本（比如你的业务脚本）
-      - name: Run custom script
+          npm install
+
+      # 3 打包
+      - name: Build project
         run: |
-          # 这里可以写你要 Runner 执行的命令，比如：
-          # bash /opt/your-script.sh
-          # python your-code.py
-          echo "自定义任务执行完成！"
+          npm run docs:build
+
+      # 4 部署到服务器目录
+      - name: Deploy to server
+        run: |
+          echo "开始部署..."
+
+          TARGET_DIR=/var/www/blogs/prod
+
+          # 删除旧文件
+          sudo rm -rf $TARGET_DIR/*
+
+          # 复制新文件
+          sudo cp -r dist/* $TARGET_DIR/
+
+          echo "部署完成"
